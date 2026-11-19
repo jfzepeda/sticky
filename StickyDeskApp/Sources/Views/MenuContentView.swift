@@ -8,6 +8,15 @@ struct MenuContentView: View {
         case reminders = "Recordatorios"
         case settings = "Ajustes"
         var id: Self { self }
+
+        var symbol: String {
+            switch self {
+            case .notes: "note.text"
+            case .projects: "folder"
+            case .reminders: "checklist"
+            case .settings: "gearshape"
+            }
+        }
     }
 
     @Environment(AppModel.self) private var model
@@ -15,11 +24,9 @@ struct MenuContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Sección", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            // A segmented Picker can't shrink below its intrinsic width; with four Spanish
+            // labels it was wider than the 380 pt window and pushed every section off-screen.
+            TabBar(selection: $tab)
 
             if let error = model.errorMessage {
                 ErrorBanner(message: error) { model.errorMessage = nil }
@@ -48,6 +55,32 @@ struct MenuContentView: View {
         .padding(12)
         .frame(width: 380, height: 500)
         .task { await model.reloadFromDisk() }
+    }
+}
+
+private struct TabBar: View {
+    @Binding var selection: MenuContentView.Tab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(MenuContentView.Tab.allCases) { tab in
+                let isSelected = tab == selection
+                Button { selection = tab } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: tab.symbol).font(.system(size: 14, weight: .medium))
+                        Text(tab.rawValue).font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(isSelected ? Color.accentColor.opacity(0.18) : .clear,
+                                in: RoundedRectangle(cornerRadius: 7))
+                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
     }
 }
 

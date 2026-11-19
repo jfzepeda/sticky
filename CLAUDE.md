@@ -12,7 +12,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   -destination 'platform=macOS' -allowProvisioningUpdates build
 ```
 
-`xcode-select` on this machine points at CommandLineTools, so `xcodebuild` needs `DEVELOPER_DIR`. `swift test` works with either toolchain. Add `CODE_SIGNING_ALLOWED=NO` for a compile-only check.
+`xcode-select` on this machine points at CommandLineTools, so `xcodebuild` needs `DEVELOPER_DIR`. `swift test` currently fails to build under CommandLineTools (MacOSX27.2 SDK, "error: fatalError"); run it with `DEVELOPER_DIR` set to Xcode too. Add `CODE_SIGNING_ALLOWED=NO` for a compile-only check.
 
 ## Layout
 
@@ -37,7 +37,7 @@ StickyWidget/Sources             Widget, provider, PostItView, NotebookSheetView
 - **Widget refresh**: app's repository `didSave` → `WidgetCenter.reloadAllTimelines()`. MCP `didSave` → Darwin notification `com.jfzepeda.stickydesk.store-changed` (+ best-effort reload). App observes it (`DarwinObservation`) and reloads. Timeline fallback: 30 min.
 - **tilt** is random once at creation (−4…4), persisted, clamped on decode. Never derive from `hashValue`.
 - **Widget**: reads via synchronous `StoreCodec.loadStore(from:)`; never writes, never touches EventKit. Notes newest-first; small = 1 (`widgetURL`), medium = 3 (`Link`), large = 6 (2-col `Grid`). 12 pt outer padding.
-- **App**: `AppDelegate` owns `AppModel`, `PanelPresenter`, `RemindersImportController`. URLs arrive via `application(_:open:)` (MenuBarExtra doesn't reliably get `onOpenURL`). Editors open in floating `NSPanel`s because the MenuBarExtra window closes on focus loss (e.g., ColorPicker).
+- **App**: `AppDelegate` owns `AppModel`, `PanelPresenter`, `RemindersImportController`. URLs arrive via `application(_:open:)` (MenuBarExtra doesn't reliably get `onOpenURL`). Projects are created/edited inline in the menu (swatch row from `Palette`, no `ColorPicker`: the color panel steals focus and the MenuBarExtra window closes). The note editor still opens in a floating `NSPanel`.
 - **EventKit**: `RemindersGateway` is `@unchecked Sendable` (wraps only `EKEventStore`); maps `EKReminder` → `ImportedReminder` inside the fetch callback. Empty list selection returns `[]` (EventKit's `nil` calendars means *all*). Selected lists and "clean orphans" live in app `UserDefaults`.
 - **MCP**: hand-rolled JSON-RPC 2.0 (official swift-sdk was 0.12.x, pre-1.0, and the no-deps rule applies). Newline-delimited, 1 MiB message cap, no batches, stdout = protocol only, logs → stderr without user content. Tool errors are in-band `isError: true`; unknown tool → -32602. Limits/settings are enforced inside the lock against on-disk state, so they hold across multiple helper processes. Helper is sandboxed without network entitlement.
 - `STICKYDESK_STORE_PATH` env override exists only under `#if DEBUG` (tests).

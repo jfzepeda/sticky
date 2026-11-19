@@ -2,29 +2,57 @@ import StickyCore
 import SwiftUI
 
 struct ProjectsView: View {
+    /// What the inline editor is working on.
+    enum EditTarget: Equatable {
+        case new
+        case existing(UUID)
+    }
+
     @Environment(AppModel.self) private var model
-    @Environment(PanelPresenter.self) private var panels
     @State private var pendingDelete: UUID?
+    @State private var editing: EditTarget?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Proyectos").font(.headline)
                 Spacer()
-                Button { panels.showProjectEditor(projectID: nil) } label: {
-                    Label("Nuevo proyecto", systemImage: "plus")
+                if editing == nil {
+                    Button { startEditing(.new) } label: {
+                        Label("Nuevo proyecto", systemImage: "plus")
+                    }
                 }
             }
+
+            if editing == .new {
+                InlineProjectEditor(projectID: nil, onClose: { editing = nil })
+            }
+
             if model.store.projects.isEmpty {
-                ContentUnavailableView("Sin proyectos", systemImage: "folder",
-                                       description: Text("Las notas sin proyecto usan color vainilla."))
+                if editing == nil {
+                    ContentUnavailableView("Sin proyectos", systemImage: "folder",
+                                           description: Text("Las notas sin proyecto usan color vainilla."))
+                }
             } else {
                 List(model.store.projects) { project in
-                    row(project)
+                    if editing == .existing(project.id) {
+                        InlineProjectEditor(projectID: project.id, onClose: { editing = nil })
+                            .listRowSeparator(.hidden)
+                    } else {
+                        row(project)
+                    }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
+        .animation(.snappy(duration: 0.2), value: editing)
+    }
+
+    private func startEditing(_ target: EditTarget) {
+        pendingDelete = nil
+        model.errorMessage = nil
+        editing = target
     }
 
     @ViewBuilder
@@ -46,7 +74,7 @@ struct ProjectsView: View {
                 }
                 Button("No") { pendingDelete = nil }
             } else {
-                Button { panels.showProjectEditor(projectID: project.id) } label: { Image(systemName: "pencil") }
+                Button { startEditing(.existing(project.id)) } label: { Image(systemName: "pencil") }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Editar proyecto")
                 Button(role: .destructive) { pendingDelete = project.id } label: { Image(systemName: "trash") }
@@ -55,61 +83,109 @@ struct ProjectsView: View {
                     .help("Las notas del proyecto se conservan sin proyecto.")
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { startEditing(.existing(project.id)) }
     }
 }
 
-struct ProjectEditorView: View {
+/// Create (`projectID == nil`) or edit a project directly inside the menu bar window.
+/// Colors come from a fixed swatch row instead of `ColorPicker`: the system color panel
+/// steals focus and the MenuBarExtra window closes as soon as it loses it.
+private struct InlineProjectEditor: View {
     let projectID: UUID?
     let onClose: () -> Void
 
     @Environment(AppModel.self) private var model
     @State private var name = ""
-    @State private var color: Color = RGBA.vanilla.solid
+    @State private var color: RGBA = Palette.colors[0]
     @State private var loaded = false
+    @State private var isSaving = false
+    @FocusState private var nameFocused: Bool
+
+    /// Vanilla + the fixed palette, plus the project's current color if it's custom
+    /// (e.g. imported from a Reminders list) so editing never silently changes it.
+    private var swatches: [RGBA] {
+        var colors = [RGBA.vanilla] + Palette.colors
+        if !colors.contains(color) { colors.append(color) }
+        return colors
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+    }
 
     var body: some View {
-        Form {
-            TextField("Nombre", text: $name)
-            ColorPicker("Color", selection: $color, supportsOpacity: false)
-            HStack {
-                Text("Vista previa").foregroundStyle(.secondary)
-                Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill((RGBA(color: color) ?? .vanilla).postItColor)
-                    .frame(width: 44, height: 44)
+                    .fill(color.postItColor)
+                    .frame(width: 30, height: 30)
                     .shadow(radius: 1, y: 1)
+                TextField(projectID == nil ? "Nombre del nuevo proyecto" : "Nombre del proyecto", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($nameFocused)
+                    .onSubmit(save)
+                    .onExitCommand(perform: onClose)
+            }
+            HStack(spacing: 6) {
+                ForEach(swatches, id: \.self) { swatch in
+                    let isSelected = swatch == color
+                    Button { color = swatch } label: {
+                        Circle()
+                            .fill(swatch.postItColor)
+                            .overlay(Circle().strokeBorder(.black.opacity(0.15), lineWidth: 0.5))
+                            .padding(isSelected ? 3 : 0)
+                            .overlay(Circle().strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Color \(swatch.hexString)")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
             }
             if let error = model.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Spacer()
-                Button("Cancelar", action: onClose).keyboardShortcut(.cancelAction)
-                Button("Guardar", action: save).keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Cancelar", action: onClose)
+                Button(projectID == nil ? "Crear" : "Guardar", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 360)
-        .onAppear {
-            guard !loaded else { return }
-            loaded = true
-            if let projectID, let project = model.store.project(id: projectID) {
-                name = project.name
-                color = project.color.solid
-            }
+        .padding(10)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .onAppear(perform: loadOnce)
+    }
+
+    private func loadOnce() {
+        guard !loaded else { return }
+        loaded = true
+        if let projectID, let project = model.store.project(id: projectID) {
+            name = project.name
+            color = project.color
+        } else {
+            // Suggest the next palette color, same rule agents use.
+            color = Palette.color(forProjectIndex: model.store.projects.count)
         }
+        nameFocused = true
     }
 
     private func save() {
+        guard canSave else { return }
+        isSaving = true
         let name = name
-        let rgba = RGBA(color: color) ?? .vanilla
+        let color = color
         Task {
+            defer { isSaving = false }
             let ok: Bool
             if let projectID {
-                ok = await model.updateProject(id: projectID, name: name, color: rgba)
+                ok = await model.updateProject(id: projectID, name: name, color: color)
             } else {
-                ok = await model.addProject(name: name, color: rgba)
+                ok = await model.addProject(name: name, color: color)
             }
             if ok { onClose() }
         }

@@ -22,14 +22,6 @@ final class PanelPresenter {
         }
     }
 
-    func showProjectEditor(projectID: UUID?) {
-        let key = "project-\(projectID?.uuidString ?? "new")"
-        show(key: key, title: projectID == nil ? "Nuevo proyecto" : "Editar proyecto") { [model] close in
-            ProjectEditorView(projectID: projectID, onClose: close)
-                .environment(model)
-        }
-    }
-
     private func show<Content: View>(
         key: String,
         title: String,
@@ -43,7 +35,7 @@ final class PanelPresenter {
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
-            styleMask: [.titled, .closable, .fullSizeContentView],
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
@@ -56,7 +48,14 @@ final class PanelPresenter {
             panel?.close()
             self?.panels[key] = nil
         }
-        panel.contentViewController = NSHostingController(rootView: content(close))
+        // Size the panel to the SwiftUI content so it never opens collapsed or clipped.
+        let hosting = NSHostingController(rootView: content(close))
+        hosting.sizingOptions = [.preferredContentSize]
+        panel.contentViewController = hosting
+        let fitting = hosting.view.fittingSize
+        if fitting.width > 0, fitting.height > 0 {
+            panel.setContentSize(fitting)
+        }
         panel.center()
 
         NotificationCenter.default.addObserver(
