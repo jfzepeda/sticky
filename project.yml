@@ -1,0 +1,151 @@
+name: StickyDesk
+
+options:
+  bundleIdPrefix: com.jfzepeda
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    # Change this to your own Team ID.
+    DEVELOPMENT_TEAM: 88X2SWBZJ8
+    CODE_SIGN_STYLE: Automatic
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+    # Single source of truth for the shared App Group.
+    # macOS accepts "<TeamID>.<name>" without a provisioning profile, which the
+    # command-line MCP helper needs (it cannot embed a profile). To use the
+    # iOS-style "group.com.jfzepeda.stickydesk" instead, change this line; see README.
+    STICKY_APP_GROUP: $(TeamIdentifierPrefix)stickydesk
+
+packages:
+  StickyCore:
+    path: Packages/StickyCore
+
+targets:
+  StickyDeskApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: StickyDeskApp/Sources
+      - path: StickyDeskApp/Resources
+    dependencies:
+      - package: StickyCore
+        product: StickyCore
+      - target: StickyWidget
+        embed: true
+      - target: stickydesk-mcp
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jfzepeda.stickydesk
+        PRODUCT_NAME: StickyDesk
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: StickyDeskApp/Info.plist
+      properties:
+        CFBundleDisplayName: StickyDesk
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.productivity
+        NSRemindersFullAccessUsageDescription: StickyDesk lee tus listas de Recordatorios para mostrarlas como notas. Nunca modifica tus recordatorios.
+        StickyAppGroupID: $(STICKY_APP_GROUP)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jfzepeda.stickydesk
+            CFBundleURLSchemes: [stickydesk]
+    entitlements:
+      path: StickyDeskApp/StickyDeskApp.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [$(STICKY_APP_GROUP)]
+        com.apple.security.personal-information.calendars: true
+
+  StickyWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: StickyWidget/Sources
+    dependencies:
+      - package: StickyCore
+        product: StickyCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jfzepeda.stickydesk.widget
+        PRODUCT_NAME: StickyWidget
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+    info:
+      path: StickyWidget/Info.plist
+      properties:
+        CFBundleDisplayName: StickyDesk
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        StickyAppGroupID: $(STICKY_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: StickyWidget/StickyWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [$(STICKY_APP_GROUP)]
+
+  stickydesk-mcp:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Packages/StickyCore/Sources/stickydesk-mcp
+        group: StickyDeskMCP
+    dependencies:
+      - package: StickyCore
+        product: StickyMCP
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jfzepeda.stickydesk.mcp
+        PRODUCT_NAME: stickydesk-mcp
+        GENERATE_INFOPLIST_FILE: NO
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: StickyDeskMCP/Info.plist
+      properties:
+        CFBundleIdentifier: com.jfzepeda.stickydesk.mcp
+        CFBundleName: stickydesk-mcp
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        StickyAppGroupID: $(STICKY_APP_GROUP)
+    entitlements:
+      path: StickyDeskMCP/stickydesk-mcp.entitlements
+      properties:
+        # Sandboxed with no network entitlement: the server cannot open sockets.
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [$(STICKY_APP_GROUP)]
+
+schemes:
+  StickyDeskApp:
+    build:
+      targets:
+        StickyDeskApp: all
+        StickyWidget: all
+        stickydesk-mcp: all
+    run:
+      config: Debug
+    archive:
+      config: Release
