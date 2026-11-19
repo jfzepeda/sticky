@@ -22,6 +22,7 @@ struct StickyWidgetView: View {
             switch presentation {
             case .empty:
                 NotebookSheetView()
+                    .widgetURL(DeepLink.newNoteURL(projectID: nil))
             case .overview(let groups):
                 overview(groups)
             case .group(let group, let notes):
@@ -43,18 +44,24 @@ struct StickyWidgetView: View {
 
     @ViewBuilder
     private func overview(_ groups: Paged<NoteGroup>) -> some View {
+        let isFull = groups.items.count >= family.slotCount
         VStack(spacing: 6) {
-            if groups.pageCount > 1 {
-                HStack {
-                    Spacer()
-                    pager(groups, inGroup: false)
+            if groups.pageCount > 1 || isFull {
+                HStack(spacing: 6) {
+                    Spacer(minLength: 0)
+                    if isFull {
+                        newButton("Proyecto", url: DeepLink.newProjectURL)
+                    }
+                    if groups.pageCount > 1 {
+                        pager(groups, inGroup: false)
+                    }
                 }
             }
-            SlotGrid(items: groups.items, slotCount: family.slotCount, spacing: spacing) { group in
-                Button(intent: OpenStackIntent(groupID: group.id, family: stateKey)) {
-                    NoteStackView(group: group)
-                }
-                .buttonStyle(.plain)
+            SlotGrid(
+                items: groups.items, slotCount: family.slotCount, spacing: spacing,
+                emptySlotURL: DeepLink.newProjectURL, emptySlotLabel: "Nuevo proyecto"
+            ) { group in
+                NoteStackView(group: group, open: OpenStackIntent(groupID: group.id, family: stateKey))
             }
         }
     }
@@ -63,6 +70,7 @@ struct StickyWidgetView: View {
 
     @ViewBuilder
     private func opened(_ group: NoteGroup, _ notes: Paged<Note>, canClose: Bool) -> some View {
+        let newNoteURL = DeepLink.newNoteURL(projectID: group.project?.id)
         VStack(spacing: 6) {
             HStack(spacing: 6) {
                 if canClose {
@@ -80,22 +88,41 @@ struct StickyWidgetView: View {
                     HStack(spacing: 3) { groupTitle(group) }.chip()
                 }
                 Spacer(minLength: 0)
+                if notes.items.count >= family.slotCount {
+                    newButton("Nota", url: newNoteURL)
+                }
                 if notes.pageCount > 1 {
                     pager(notes, inGroup: true)
                 }
             }
-            SlotGrid(items: notes.items, slotCount: family.slotCount, spacing: spacing) { note in
-                if family == .systemSmall {
-                    // Small widgets open via widgetURL; the header buttons still win their taps.
-                    PostItView(note: note, project: group.project)
-                } else {
-                    Link(destination: DeepLink.noteURL(for: note.id)) {
-                        PostItView(note: note, project: group.project)
-                    }
-                }
+            SlotGrid(
+                items: notes.items, slotCount: family.slotCount, spacing: spacing,
+                emptySlotURL: newNoteURL, emptySlotLabel: "Nueva nota"
+            ) { note in
+                // Small widgets open via widgetURL; buttons (check, header) still win their taps.
+                PostItView(
+                    note: note, project: group.project,
+                    tap: family == .systemSmall ? .none : .link(DeepLink.noteURL(for: note.id))
+                )
             }
         }
-        .widgetURL(family == .systemSmall ? notes.items.first.map { DeepLink.noteURL(for: $0.id) } : nil)
+        .widgetURL(family == .systemSmall ? smallWidgetURL(notes.items.first, newNoteURL: newNoteURL) : nil)
+    }
+
+    private func smallWidgetURL(_ note: Note?, newNoteURL: URL) -> URL {
+        note.map { DeepLink.noteURL(for: $0.id) } ?? newNoteURL
+    }
+
+    /// "+ Nota" / "+ Proyecto" in the header, shown when no dashed slot is left to tap.
+    private func newButton(_ title: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 2) {
+                Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                Text(title)
+            }
+            .chip()
+        }
+        .accessibilityLabel(title == "Nota" ? "Nueva nota" : "Nuevo proyecto")
     }
 
     @ViewBuilder
@@ -132,12 +159,14 @@ struct StickyWidgetView: View {
     }
 }
 
-/// Lays out exactly `slotCount` square slots (1, 1×2 or 2×2). Slots without an item are
-/// drawn as dashed outlines so the widget always shows its full capacity.
+/// Lays out exactly `slotCount` 9:8 slots (1, 1×2 or 2×2). Slots without an item are
+/// dashed outlines with a "+" that opens the app to create one.
 private struct SlotGrid<Item, Cell: View>: View {
     let items: [Item]
     let slotCount: Int
     let spacing: CGFloat
+    let emptySlotURL: URL
+    let emptySlotLabel: String
     @ViewBuilder let cell: (Item) -> Cell
 
     var body: some View {
@@ -160,29 +189,34 @@ private struct SlotGrid<Item, Cell: View>: View {
         if index < items.count {
             cell(items[index])
         } else {
-            EmptySlotView()
+            Link(destination: emptySlotURL) { EmptySlotView() }
+                .accessibilityLabel(emptySlotLabel)
         }
     }
 }
 
-/// Dashed outline where a note would go.
+/// Dashed outline with a "+" where a note or stack would go.
 private struct EmptySlotView: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
+        let ink = Color.primary.opacity(renderingMode == .fullColor ? 0.35 : 0.6)
         RoundedRectangle(cornerRadius: 3)
-            .strokeBorder(
-                Color.primary.opacity(renderingMode == .fullColor ? 0.35 : 0.6),
-                style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])
-            )
-            .aspectRatio(1, contentMode: .fit)
-            .accessibilityHidden(true)
+            .strokeBorder(ink, style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+            .overlay {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(ink)
+            }
+            .contentShape(Rectangle())
+            .aspectRatio(PostItMetrics.aspectRatio, contentMode: .fit)
     }
 }
 
 /// A project's newest note on top of a couple of offset sheets, with a count badge.
 private struct NoteStackView: View {
     let group: NoteGroup
+    let open: OpenStackIntent
 
     var body: some View {
         if let top = group.newest {
@@ -191,9 +225,10 @@ private struct NoteStackView: View {
             ZStack {
                 if count > 2 { sheet(paper, rotation: top.tilt + 5, x: 4, y: 3) }
                 if count > 1 { sheet(paper, rotation: top.tilt - 3.5, x: -3, y: 2) }
-                PostItView(note: top, project: group.project)
+                PostItView(note: top, project: group.project, tap: .openStack(open))
             }
-            .overlay(alignment: .topTrailing) {
+            // Leading so it never covers the completion check on the right.
+            .overlay(alignment: .topLeading) {
                 if count > 1 {
                     Text("\(count)")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -202,22 +237,17 @@ private struct NoteStackView: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.black.opacity(0.65)))
-                        .offset(x: 5, y: -5)
+                        .offset(x: -5, y: -5)
+                        .accessibilityLabel("\(count) notas en \(group.project?.name ?? "Sin proyecto")")
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(
-                "\(group.project?.name ?? "Sin proyecto"), \(count) \(count == 1 ? "nota" : "notas"). "
-                    + "Última: \(top.text)"
-            )
-            .accessibilityHint("Abre el proyecto")
         }
     }
 
     private func sheet(_ paper: RGBA, rotation: Double, x: CGFloat, y: CGFloat) -> some View {
         Rectangle()
             .fill(paper.mixed(with: .black, amount: 0.07).solid)
-            .aspectRatio(1, contentMode: .fit)
+            .aspectRatio(PostItMetrics.aspectRatio, contentMode: .fit)
             .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
             .rotationEffect(.degrees(rotation))
             .offset(x: x, y: y)

@@ -121,6 +121,7 @@ public struct StickyTools: Sendable {
                 "text": .string(note.text),
                 "project": store.project(for: note).map { .string($0.name) } ?? .null,
                 "created_by_agent": .bool(note.isAgentNote),
+                "completed": .bool(note.isCompleted),
             ]
         }
         return .success(["notes": .array(items)])

@@ -19,6 +19,8 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     /// Idempotency key supplied by an agent, used to avoid duplicates on retries.
     public var idempotencyKey: String?
     public var createdAt: Date
+    /// When the note was marked as done; `nil` = pending. Added after schema v2 (optional).
+    public var completedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -28,7 +30,8 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         sourceID: String? = nil,
         createdBy: String? = nil,
         idempotencyKey: String? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        completedAt: Date? = nil
     ) {
         self.id = id
         self.text = text
@@ -38,8 +41,10 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         self.createdBy = createdBy
         self.idempotencyKey = idempotencyKey
         self.createdAt = createdAt
+        self.completedAt = completedAt
     }
 
+    public var isCompleted: Bool { completedAt != nil }
     public var isAgentNote: Bool { createdBy == Self.agentCreator }
     public var isImported: Bool { sourceID != nil }
 
@@ -60,7 +65,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
     // MARK: Codable — tolerant of files written by older versions.
 
     private enum CodingKeys: String, CodingKey {
-        case id, text, tilt, projectID, sourceID, createdBy, idempotencyKey, createdAt
+        case id, text, tilt, projectID, sourceID, createdBy, idempotencyKey, createdAt, completedAt
     }
 
     public init(from decoder: any Decoder) throws {
@@ -73,6 +78,7 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         createdBy = try c.decodeIfPresent(String.self, forKey: .createdBy)
         idempotencyKey = try c.decodeIfPresent(String.self, forKey: .idempotencyKey)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .distantPast
+        completedAt = try c.decodeIfPresent(Date.self, forKey: .completedAt)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -85,5 +91,6 @@ public struct Note: Identifiable, Codable, Hashable, Sendable {
         try c.encodeIfPresent(createdBy, forKey: .createdBy)
         try c.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
         try c.encode(createdAt, forKey: .createdAt)
+        try c.encodeIfPresent(completedAt, forKey: .completedAt)
     }
 }

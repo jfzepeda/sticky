@@ -4,6 +4,7 @@ import SwiftUI
 /// Create (`noteID == nil`) or edit a note. Shown in its own panel.
 struct NoteEditorView: View {
     let noteID: UUID?
+    var initialProjectID: UUID?
     let onClose: () -> Void
 
     @Environment(AppModel.self) private var model
@@ -37,6 +38,13 @@ struct NoteEditorView: View {
                     .foregroundStyle(text.count > NotesStore.maxNoteLength ? .red : .secondary)
                 HStack {
                     ProjectPicker(selection: $projectID)
+                    if let note {
+                        Toggle("Completada", isOn: Binding(
+                            get: { note.isCompleted },
+                            set: { done in Task { await model.setNoteCompleted(id: note.id, done) } }
+                        ))
+                        .toggleStyle(.checkbox)
+                    }
                     Spacer()
                     if let noteID {
                         Button("Borrar", role: .destructive) {
@@ -62,6 +70,8 @@ struct NoteEditorView: View {
         if let note {
             text = note.text
             projectID = note.projectID
+        } else {
+            projectID = initialProjectID
         }
     }
 

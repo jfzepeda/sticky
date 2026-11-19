@@ -60,6 +60,49 @@ struct SupportTests {
         #expect(DeepLink.noteID(from: url) == nil)
     }
 
+    @Test func creationDeepLinksRoundTrip() {
+        let project = UUID()
+        #expect(DeepLink.action(from: DeepLink.newNoteURL(projectID: nil)) == .newNote(projectID: nil))
+        #expect(DeepLink.action(from: DeepLink.newNoteURL(projectID: project)) == .newNote(projectID: project))
+        #expect(DeepLink.newNoteURL(projectID: project).absoluteString
+            == "stickydesk://new-note?project=\(project.uuidString)")
+        #expect(DeepLink.action(from: DeepLink.newProjectURL) == .newProject)
+        #expect(DeepLink.action(from: DeepLink.noteURL(for: project)) == .openNote(project))
+    }
+
+    @Test(arguments: [
+        "stickydesk://new-note?project=nope",
+        "stickydesk://new-note?project=6F9619FF-8B86-D011-B42D-00CF4FC964FF&x=1",
+        "stickydesk://new-note/extra",
+        "stickydesk://new-project?x=1",
+        "stickydesk://new-project#frag",
+    ])
+    func creationDeepLinksRejectMalformed(_ string: String) throws {
+        let url = try #require(URL(string: string))
+        #expect(DeepLink.action(from: url) == nil)
+    }
+
+    @Test func completionTogglesAndSurvivesRoundTrip() throws {
+        var store = NotesStore()
+        let note = try store.addNote(text: "Hecho", projectID: nil)
+        let t0 = Date(timeIntervalSince1970: 1_000)
+
+        #expect(try store.toggleNoteCompleted(id: note.id, now: t0) == true)
+        try store.setNoteCompleted(id: note.id, true, now: t0.addingTimeInterval(60))
+        #expect(store.note(id: note.id)?.completedAt == t0) // re-completing keeps the date
+
+        let decoded = try StoreCodec.decode(try StoreCodec.encode(store))
+        #expect(decoded.note(id: note.id)?.isCompleted == true)
+
+        #expect(try store.toggleNoteCompleted(id: note.id) == false)
+        #expect(store.note(id: note.id)?.completedAt == nil)
+        #expect(throws: NotesStore.EditError.unknownNote) { try store.toggleNoteCompleted(id: UUID()) }
+
+        // Files written before this field existed decode as pending.
+        let legacy = #"{"notes":[{"id":"6F9619FF-8B86-D011-B42D-00CF4FC964FF","text":"x"}]}"#
+        #expect(try StoreCodec.decode(Data(legacy.utf8)).notes.first?.isCompleted == false)
+    }
+
     @Test func rgbaHelpers() throws {
         #expect(RGBA.vanilla.hexString == "#F3E5AB")
         #expect(RGBA(hex: "#F3E5AB") == RGBA.vanilla)

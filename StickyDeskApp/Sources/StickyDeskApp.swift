@@ -31,13 +31,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            guard let id = DeepLink.noteID(from: url) else { continue }
+            guard let action = DeepLink.action(from: url) else { continue }
             Task { @MainActor in
                 await model.reloadFromDisk()
-                if model.store.note(id: id) != nil {
-                    panels.showNoteEditor(noteID: id)
-                } else {
-                    model.errorMessage = "La nota ya no existe."
+                switch action {
+                case .openNote(let id):
+                    if model.store.note(id: id) != nil {
+                        panels.showNoteEditor(noteID: id)
+                    } else {
+                        model.errorMessage = "La nota ya no existe."
+                    }
+                case .newNote(let projectID):
+                    // A project deleted since the widget rendered → create without project.
+                    let existing = projectID.flatMap { model.store.project(id: $0)?.id }
+                    panels.showNoteEditor(noteID: nil, projectID: existing)
+                case .newProject:
+                    panels.showProjectEditor()
                 }
             }
         }

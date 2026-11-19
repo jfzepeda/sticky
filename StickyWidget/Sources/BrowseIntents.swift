@@ -66,3 +66,28 @@ struct ShowPageIntent: AppIntent {
         return .result()
     }
 }
+
+/// The only widget intent that writes the notes store: it goes through `NotesRepository`
+/// (cross-process lock + atomic write) and posts the Darwin notification so the app reloads.
+struct ToggleNoteCompletedIntent: AppIntent {
+    static let title: LocalizedStringResource = "Marcar nota como completada"
+    static let isDiscoverable = false
+
+    @Parameter(title: "Nota") var noteID: String
+
+    init() {}
+
+    init(noteID: String) {
+        self.noteID = noteID
+    }
+
+    func perform() async throws -> some IntentResult {
+        guard let id = UUID(uuidString: noteID) else { return .result() }
+        let repository = try NotesRepository.shared(didSave: {
+            DarwinNotifier.post()
+            WidgetReloader.reloadAll()
+        })
+        try await repository.update { try $0.toggleNoteCompleted(id: id) }
+        return .result()
+    }
+}

@@ -72,10 +72,20 @@ struct NoteRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            Button {
+                Task { await model.setNoteCompleted(id: note.id, !note.isCompleted) }
+            } label: {
+                Image(systemName: note.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(note.isCompleted ? Color.green : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(note.isCompleted ? "Marcar como pendiente" : "Marcar como completada")
             ProjectSwatch(color: project?.color)
                 .padding(.top, 3)
             VStack(alignment: .leading, spacing: 2) {
                 Text(note.text).lineLimit(3)
+                    .strikethrough(note.isCompleted)
+                    .foregroundStyle(note.isCompleted ? .secondary : .primary)
                 HStack(spacing: 4) {
                     if let project {
                         Text(project.name.uppercased())

@@ -25,7 +25,7 @@ struct ProjectsView: View {
             }
 
             if editing == .new {
-                InlineProjectEditor(projectID: nil, onClose: { editing = nil })
+                ProjectEditorForm(projectID: nil, onClose: { editing = nil })
             }
 
             if model.store.projects.isEmpty {
@@ -36,7 +36,7 @@ struct ProjectsView: View {
             } else {
                 List(model.store.projects) { project in
                     if editing == .existing(project.id) {
-                        InlineProjectEditor(projectID: project.id, onClose: { editing = nil })
+                        ProjectEditorForm(projectID: project.id, onClose: { editing = nil })
                             .listRowSeparator(.hidden)
                     } else {
                         row(project)
@@ -88,10 +88,11 @@ struct ProjectsView: View {
     }
 }
 
-/// Create (`projectID == nil`) or edit a project directly inside the menu bar window.
+/// Create (`projectID == nil`) or edit a project directly inside the menu bar window
+/// (also hosted in a panel when the widget's "+" asks for a new project).
 /// Colors come from a fixed swatch row instead of `ColorPicker`: the system color panel
 /// steals focus and the MenuBarExtra window closes as soon as it loses it.
-private struct InlineProjectEditor: View {
+struct ProjectEditorForm: View {
     let projectID: UUID?
     let onClose: () -> Void
 

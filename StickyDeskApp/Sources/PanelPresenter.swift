@@ -14,10 +14,23 @@ final class PanelPresenter {
         self.model = model
     }
 
-    func showNoteEditor(noteID: UUID?) {
-        let key = "note-\(noteID?.uuidString ?? "new")"
+    /// `projectID` preselects the project for a new note (ignored when editing).
+    func showNoteEditor(noteID: UUID?, projectID: UUID? = nil) {
+        // New-note panels are per project so a "+" from another stack isn't swallowed.
+        let key = noteID.map { "note-\($0.uuidString)" } ?? "note-new-\(projectID?.uuidString ?? "none")"
         show(key: key, title: noteID == nil ? "Nueva nota" : "Editar nota") { [model] close in
-            NoteEditorView(noteID: noteID, onClose: close)
+            NoteEditorView(noteID: noteID, initialProjectID: projectID, onClose: close)
+                .environment(model)
+        }
+    }
+
+    /// New project from the widget's "+" (the menu bar window can't be opened programmatically,
+    /// so this reuses the inline editor in a panel; swatches need no color panel).
+    func showProjectEditor() {
+        show(key: "project-new", title: "Nuevo proyecto") { [model] close in
+            ProjectEditorForm(projectID: nil, onClose: close)
+                .padding(12)
+                .frame(width: 360)
                 .environment(model)
         }
     }

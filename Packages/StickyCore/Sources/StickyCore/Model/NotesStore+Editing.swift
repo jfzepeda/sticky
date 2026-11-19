@@ -31,6 +31,25 @@ extension NotesStore {
         notes[index].projectID = projectID
     }
 
+    /// Marks a note as done (`completed == true`) or pending again.
+    /// Re-completing keeps the original completion date.
+    public mutating func setNoteCompleted(id: UUID, _ completed: Bool, now: Date = Date()) throws {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { throw EditError.unknownNote }
+        if completed {
+            if notes[index].completedAt == nil { notes[index].completedAt = now }
+        } else {
+            notes[index].completedAt = nil
+        }
+    }
+
+    /// Flips a note's completion. Returns the new state.
+    @discardableResult
+    public mutating func toggleNoteCompleted(id: UUID, now: Date = Date()) throws -> Bool {
+        guard let note = note(id: id) else { throw EditError.unknownNote }
+        try setNoteCompleted(id: id, !note.isCompleted, now: now)
+        return !note.isCompleted
+    }
+
     public mutating func deleteNote(id: UUID) {
         notes.removeAll { $0.id == id }
     }
