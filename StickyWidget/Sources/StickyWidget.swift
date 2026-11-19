@@ -11,12 +11,16 @@ struct StickyWidgetBundle: WidgetBundle {
 
 struct StickyWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: WidgetReloader.widgetKind, provider: StickyProvider()) { entry in
+        AppIntentConfiguration(
+            kind: WidgetReloader.widgetKind,
+            intent: StickyConfigurationIntent.self,
+            provider: StickyProvider()
+        ) { entry in
             StickyWidgetView(entry: entry)
                 .containerBackground(for: .widget) { Color.clear }
         }
         .configurationDisplayName("StickyDesk")
-        .description("Tus notas como post-its en el escritorio.")
+        .description("Tus notas como post-its, agrupadas por proyecto. Edita el widget para mostrar solo un proyecto.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }

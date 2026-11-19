@@ -5,7 +5,7 @@ macOS 14+ post-it widget + menu bar app + MCP helper. Swift 6 language mode ever
 ## Commands
 
 ```bash
-xcodegen generate                                   # regenerate StickyDesk.xcodeproj from project.yml
+xcodegen generate --use-cache                       # regenerate StickyDesk.xcodeproj (only when project.yml or the file list changed)
 cd Packages/StickyCore && swift test                # all unit + protocol + e2e tests
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   xcodebuild -project StickyDesk.xcodeproj -scheme StickyDeskApp -configuration Debug \
@@ -19,7 +19,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 ```
 project.yml                      XcodeGen spec (source of truth; .xcodeproj is gitignored)
 Packages/StickyCore/
-  Sources/StickyCore/            Model/, Persistence/, Import/, Agent/, Support/
+  Sources/StickyCore/            Model/, Persistence/, Import/, Agent/, Support/, Widget/
   Sources/StickyMCP/             JSON-RPC server, tools, stdio transport, entry point
   Sources/stickydesk-mcp/        main.swift — shared by SwiftPM executable AND Xcode tool target
   Tests/StickyCoreTests, Tests/StickyMCPTests
@@ -36,7 +36,8 @@ StickyWidget/Sources             Widget, provider, PostItView, NotebookSheetView
 - **App Group**: `STICKY_APP_GROUP` in project.yml → entitlements + `StickyAppGroupID` Info.plist key → `AppGroup.identifier`. Defaults to `<TeamID>.stickydesk` because a CLI can't embed a provisioning profile and macOS 15+ requires one for `group.`-prefixed IDs (verified: signed sandboxed helper accesses the container with no prompt). The helper gets an Info.plist via `CREATE_INFOPLIST_SECTION_IN_BINARY`.
 - **Widget refresh**: app's repository `didSave` → `WidgetCenter.reloadAllTimelines()`. MCP `didSave` → Darwin notification `com.jfzepeda.stickydesk.store-changed` (+ best-effort reload). App observes it (`DarwinObservation`) and reloads. Timeline fallback: 30 min.
 - **tilt** is random once at creation (−4…4), persisted, clamped on decode. Never derive from `hashValue`.
-- **Widget**: reads via synchronous `StoreCodec.loadStore(from:)`; never writes, never touches EventKit. Notes newest-first; small = 1 (`widgetURL`), medium = 3 (`Link`), large = 6 (2-col `Grid`). 12 pt outer padding.
+- **Widget**: reads via synchronous `StoreCodec.loadStore(from:)`; never writes the notes store, never touches EventKit. Slots: small 1, medium 2, large 4 (`SlotGrid`); unfilled slots are dashed outlines; zero notes → notebook sheet. Overview = one stack per project (`NotesStore.noteGroups`, unassigned/dangling notes share one stack); tapping a stack (`OpenStackIntent`) opens it in place with back + pager. Presentation logic is `WidgetPresentation` in StickyCore/Widget (tested). Browse state (open stack, pages) lives in `widget-state.json` next to `notes.json`, keyed per size (+ pinned project), written only by the widget's intents. `AppIntentConfiguration` with `StickyConfigurationIntent`: "Todos los proyectos" (default) or one project (`.pinned`, no back button; deleted project → all). Notes open the editor via `widgetURL` (small) / `Link`. 12 pt outer padding.
+- Regenerating with XcodeGen replaces the open `.xcodeproj`, so Xcode shows "workspace file has disappeared"; use `--use-cache` and only regenerate when files are added/removed.
 - **App**: `AppDelegate` owns `AppModel`, `PanelPresenter`, `RemindersImportController`. URLs arrive via `application(_:open:)` (MenuBarExtra doesn't reliably get `onOpenURL`). Projects are created/edited inline in the menu (swatch row from `Palette`, no `ColorPicker`: the color panel steals focus and the MenuBarExtra window closes). The note editor still opens in a floating `NSPanel`.
 - **EventKit**: `RemindersGateway` is `@unchecked Sendable` (wraps only `EKEventStore`); maps `EKReminder` → `ImportedReminder` inside the fetch callback. Empty list selection returns `[]` (EventKit's `nil` calendars means *all*). Selected lists and "clean orphans" live in app `UserDefaults`.
 - **MCP**: hand-rolled JSON-RPC 2.0 (official swift-sdk was 0.12.x, pre-1.0, and the no-deps rule applies). Newline-delimited, 1 MiB message cap, no batches, stdout = protocol only, logs → stderr without user content. Tool errors are in-band `isError: true`; unknown tool → -32602. Limits/settings are enforced inside the lock against on-disk state, so they hold across multiple helper processes. Helper is sandboxed without network entitlement.
