@@ -80,19 +80,25 @@ public actor NotesRepository {
         defer { lock.unlock() }
 
         var store: NotesStore
+        var fileExists = true
         switch StoreCodec.load(from: fileURL) {
         case .loaded(let current):
             store = current
         case .missing:
             store = .empty
+            fileExists = false
         case .corrupt(let reason):
             // Never silently overwrite unreadable user data: keep a copy aside first.
             logger.error("Store is corrupt, backing it up: \(reason, privacy: .public)")
             backUpCorruptFile()
             store = .empty
+            fileExists = false
         }
 
+        let original = store
         let result = try body(&store)
+        // Skip no-op writes (e.g. an idempotent retry) to avoid needless widget reloads.
+        guard store != original || !fileExists else { return (store, result) }
         try write(store)
         didSave()
         return (store, result)

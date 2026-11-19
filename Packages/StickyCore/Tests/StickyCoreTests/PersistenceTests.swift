@@ -113,6 +113,9 @@ struct PersistenceTests {
         try await repo.update { store in try store.addNote(text: "A", projectID: nil) }
         try await repo.update { store in try store.addNote(text: "B", projectID: nil) }
         #expect(counter.value == 2)
+        // A no-op update does not rewrite the file or trigger a reload.
+        try await repo.update { _ in }
+        #expect(counter.value == 2)
     }
 
     @Test func concurrentWritersDoNotLoseData() async throws {
