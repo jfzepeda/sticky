@@ -14,7 +14,7 @@ let package = Package(
         .target(name: "StickyMCP", dependencies: ["StickyCore"]),
         .executableTarget(name: "stickydesk-mcp", dependencies: ["StickyMCP"]),
         .testTarget(name: "StickyCoreTests", dependencies: ["StickyCore"]),
-        .testTarget(name: "StickyMCPTests", dependencies: ["StickyMCP", "StickyCore", "stickydesk-mcp"]),
+        .testTarget(name: "StickyMCPTests", dependencies: ["StickyMCP", "StickyCore"]),
     ],
     swiftLanguageModes: [.v6]
 )
