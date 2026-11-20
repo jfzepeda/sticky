@@ -79,7 +79,7 @@ public struct WidgetBrowseState: Codable, Equatable, Sendable {
 
 /// What a widget of `slotCount` slots should draw for a store and browse state.
 public enum WidgetPresentation: Equatable, Sendable {
-    /// No notes at all.
+    /// No pending notes at all.
     case empty
     /// One stack per project; `slotCount - groups.items.count` dashed placeholders.
     case overview(Paged<NoteGroup>)
@@ -91,6 +91,8 @@ public enum WidgetPresentation: Equatable, Sendable {
     /// `pinnedProjectID` comes from the widget's configuration (`nil` = all projects). A
     /// pinned project that no longer exists falls back to showing all projects.
     public init(store: NotesStore, state: WidgetBrowseState.Slot, slotCount: Int, pinnedProjectID: UUID? = nil) {
+        // Completed notes never appear in the widget: checking one makes it disappear.
+        let store = store.filtered(.pending)
         if let pinnedProjectID, let project = store.project(id: pinnedProjectID) {
             let notes = store.notes.filter { $0.projectID == project.id }.sorted(by: NotesStore.newestFirst)
             let group = NoteGroup(id: project.id.uuidString, project: project, notes: notes)

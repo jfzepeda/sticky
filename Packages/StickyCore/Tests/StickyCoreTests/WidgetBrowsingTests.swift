@@ -119,6 +119,58 @@ struct WidgetBrowsingTests {
         }
     }
 
+    @Test func widgetHidesCompletedNotes() throws {
+        var (store, work, home) = sampleStore()
+        let w3 = try #require(store.notes.first { $0.text == "w3" })
+        let h1 = try #require(store.notes.first { $0.text == "h1" })
+        try store.setNoteCompleted(id: w3.id, true)
+        try store.setNoteCompleted(id: h1.id, true)
+
+        // "Casa" only had h1, so its stack is gone; Trabajo keeps w2, w1.
+        guard case .overview(let overview) = WidgetPresentation(
+            store: store, state: WidgetBrowseState.Slot(), slotCount: 4
+        ) else { Issue.record("expected overview"); return }
+        #expect(!overview.items.contains { $0.id == home.id.uuidString })
+        #expect(overview.items.first { $0.id == work.id.uuidString }?.notes.map(\.text) == ["w2", "w1"])
+
+        // An open stack whose notes are all done falls back to the overview.
+        var state = WidgetBrowseState()
+        state.open(groupID: home.id.uuidString, family: "large")
+        if case .overview = WidgetPresentation(store: store, state: state["large"], slotCount: 4) {} else {
+            Issue.record("fully completed stack should close")
+        }
+
+        // Pinned project with only completed notes shows empty (dashed) slots.
+        if case .pinned(_, let page) = WidgetPresentation(
+            store: store, state: WidgetBrowseState.Slot(), slotCount: 2, pinnedProjectID: home.id
+        ) {
+            #expect(page.items.isEmpty)
+        } else {
+            Issue.record("expected pinned")
+        }
+
+        // Everything done → empty state.
+        for note in store.notes { try store.setNoteCompleted(id: note.id, true) }
+        #expect(WidgetPresentation(store: store, state: WidgetBrowseState.Slot(), slotCount: 1) == .empty)
+    }
+
+    @Test func noteFilterSplitsPendingAndCompleted() throws {
+        var (store, _, _) = sampleStore()
+        let w2 = try #require(store.notes.first { $0.text == "w2" })
+        try store.setNoteCompleted(id: w2.id, true)
+
+        #expect(store.notes(matching: .completed).map(\.text) == ["w2"])
+        #expect(!store.notes(matching: .pending).contains { $0.text == "w2" })
+        #expect(store.notes(matching: .all).count == store.notes.count)
+        #expect(store.notes(matching: .all).first?.text == "w3") // newest first
+        #expect(store.filtered(.pending).projects == store.projects)
+
+        let before = store.notes.count
+        #expect(store.deleteCompletedNotes() == 1)
+        #expect(store.notes.count == before - 1 && store.notes(matching: .completed).isEmpty)
+        #expect(store.deleteCompletedNotes() == 0)
+    }
+
     @Test func browseStateRoundTripsAndToleratesGarbage() throws {
         let dir = try TempDir()
         let url = dir.url.appendingPathComponent("StickyDesk/\(WidgetBrowseStore.fileName)")

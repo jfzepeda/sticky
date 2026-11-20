@@ -7,18 +7,20 @@ struct NotesListView: View {
 
     @State private var draft = ""
     @State private var draftProjectID: UUID?
-    @FocusState private var draftFocused: Bool
+    @State private var filter: NoteFilter = .pending
+    @State private var confirmingDeleteCompleted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             newNoteForm
             Divider()
-            if model.store.notes.isEmpty {
-                ContentUnavailableView("Sin notas", systemImage: "note.text",
-                                       description: Text("Escribe una arriba o importa desde Recordatorios."))
+            filterBar
+            let notes = model.store.notes(matching: filter)
+            if notes.isEmpty {
+                emptyState
             } else {
                 List {
-                    ForEach(model.store.notesNewestFirst) { note in
+                    ForEach(notes) { note in
                         NoteRow(note: note, project: model.store.project(for: note))
                             .contentShape(Rectangle())
                             .onTapGesture(count: 2) { panels.showNoteEditor(noteID: note.id) }
@@ -35,30 +37,82 @@ struct NotesListView: View {
         }
     }
 
+    private var completedCount: Int {
+        model.store.notes.count { $0.isCompleted }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Picker("Mostrar", selection: $filter) {
+                ForEach(NoteFilter.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .onChange(of: filter) { confirmingDeleteCompleted = false }
+            Spacer(minLength: 0)
+            if completedCount > 0 {
+                if confirmingDeleteCompleted {
+                    Text("¿Borrar \(completedCount)?").font(.caption)
+                    Button("Sí", role: .destructive) {
+                        confirmingDeleteCompleted = false
+                        Task { await model.deleteCompletedNotes() }
+                    }
+                    Button("No") { confirmingDeleteCompleted = false }
+                } else {
+                    Button(role: .destructive) { confirmingDeleteCompleted = true } label: {
+                        Label("Borrar completadas", systemImage: "trash")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Borrar las \(completedCount) notas completadas")
+                    .accessibilityLabel("Borrar todas las completadas")
+                }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        switch filter {
+        case .pending where !model.store.notes.isEmpty:
+            ContentUnavailableView("Todo listo", systemImage: "checkmark.circle",
+                                   description: Text("No hay notas pendientes."))
+        case .completed:
+            ContentUnavailableView("Sin completadas", systemImage: "checkmark.circle",
+                                   description: Text("Marca una nota con la palomita para verla aquí."))
+        default:
+            ContentUnavailableView("Sin notas", systemImage: "note.text",
+                                   description: Text("Escribe una arriba o importa desde Recordatorios."))
+        }
+    }
+
     private var newNoteForm: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Nueva nota…", text: $draft, axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.roundedBorder)
-                .focused($draftFocused)
-                .onSubmit(addDraft)
+            ListTextEditor(text: $draft, placeholder: "Nueva nota…  (\"- \" viñetas, \"1 \" numerada)")
+                .padding(4)
+                .frame(height: 76)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.3)))
             HStack {
                 ProjectPicker(selection: $draftProjectID)
                 Spacer()
+                // Return adds lines / list items inside the box, so adding is ⌘↩.
                 Button("Añadir", action: addDraft)
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Añadir (⌘↩)")
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
 
     private func addDraft() {
-        let text = draft
+        let text = ListFormatting.trimmingEmptyTrailingItems(draft)
         let projectID = draftProjectID
         Task {
             if await model.addNote(text: text, projectID: projectID) {
                 draft = ""
-                draftFocused = true
             }
         }
     }

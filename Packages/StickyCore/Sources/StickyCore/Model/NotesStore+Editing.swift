@@ -76,6 +76,14 @@ extension NotesStore {
         }
     }
 
+    /// Removes every completed note. Returns how many were removed.
+    @discardableResult
+    public mutating func deleteCompletedNotes() -> Int {
+        let before = notes.count
+        notes.removeAll { $0.isCompleted }
+        return before - notes.count
+    }
+
     /// Removes every note created by an agent. Returns how many were removed.
     @discardableResult
     public mutating func deleteAllAgentNotes() -> Int {

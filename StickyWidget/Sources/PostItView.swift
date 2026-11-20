@@ -7,10 +7,13 @@ import WidgetKit
 /// squeeze them.
 enum PostItMetrics {
     static let aspectRatio: CGFloat = 9.0 / 8.0
-    static let bandHeight: CGFloat = 16
+    static let bandHeight: CGFloat = 22
+    static let checkSize: CGFloat = 18
+    /// Room the check takes at the band's trailing edge (size + its padding).
+    static let checkInset: CGFloat = checkSize + 6
 }
 
-/// The paper itself: gradient, adhesive band, text and project label. Flexible size, no
+/// The paper itself: gradient, adhesive band (with the project name), and text. Flexible size, no
 /// rotation or shadow (callers add those so overlays rotate with it).
 struct PostItPaper: View {
     let note: Note
@@ -36,10 +39,21 @@ struct PostItPaper: View {
                 )
 
             VStack(spacing: 0) {
-                // Adhesive band; the completion check sits on it.
+                // Adhesive band: project name, then the completion check (overlaid by PostItView).
                 Rectangle()
                     .fill(Color.black.opacity(0.05))
                     .frame(height: PostItMetrics.bandHeight)
+                    .overlay(alignment: .trailing) {
+                        if let project {
+                            Text(project.name.uppercased())
+                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Color.black)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .padding(.leading, 8)
+                                .padding(.trailing, PostItMetrics.checkInset)
+                        }
+                    }
 
                 Text(note.text)
                     .font(.system(size: 13, design: .rounded))
@@ -50,19 +64,7 @@ struct PostItPaper: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 8)
                     .padding(.top, 4)
-                    .padding(.bottom, project == nil ? 6 : 16)
-            }
-
-            if let project {
-                Text(project.name.uppercased())
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(Color.gray)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 80, alignment: .trailing)
-                    .padding(.trailing, 6)
-                    .padding(.bottom, 5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.bottom, 6)
             }
         }
         .overlay {
@@ -94,7 +96,8 @@ struct PostItView: View {
                 CompletionCheck(isCompleted: note.isCompleted)
             }
             .buttonStyle(.plain)
-            .padding(.top, 1)
+            // Centered vertically in the band.
+            .frame(height: PostItMetrics.bandHeight)
             .padding(.trailing, 3)
             .accessibilityLabel(note.isCompleted ? "Marcar como pendiente" : "Marcar como completada")
         }
@@ -135,9 +138,9 @@ struct CompletionCheck: View {
 
     var body: some View {
         Image(systemName: isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(isCompleted ? Color.green : Color.black.opacity(0.35))
-            .frame(width: 16, height: 16)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(isCompleted ? Color.green : Color.black.opacity(0.4))
+            .frame(width: PostItMetrics.checkSize, height: PostItMetrics.checkSize)
             .contentShape(Rectangle())
     }
 }

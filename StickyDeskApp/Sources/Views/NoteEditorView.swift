@@ -26,17 +26,17 @@ struct NoteEditorView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                TextEditor(text: $text)
-                    .font(.system(size: 14, design: .rounded))
-                    .scrollContentBackground(.hidden)
+                ListTextEditor(text: $text,
+                               placeholder: "Escribe la nota… (\"- \" viñetas, \"1 \" lista numerada)",
+                               font: Self.editorFont,
+                               textColor: .black.withAlphaComponent(0.85),
+                               autofocus: true)
                     .padding(8)
                     .background((model.store.project(id: projectID ?? UUID())?.color.postItRGBA ?? .vanilla).solid,
                                 in: RoundedRectangle(cornerRadius: 4))
                     .frame(minHeight: 140)
-                Text("\(text.count)/\(NotesStore.maxNoteLength)")
-                    .font(.caption2)
-                    .foregroundStyle(text.count > NotesStore.maxNoteLength ? .red : .secondary)
-                HStack {
+                // Metadata row: project + completion on the left, counter on the right.
+                HStack(spacing: 12) {
                     ProjectPicker(selection: $projectID)
                     if let note {
                         Toggle("Completada", isOn: Binding(
@@ -44,15 +44,36 @@ struct NoteEditorView: View {
                             set: { done in Task { await model.setNoteCompleted(id: note.id, done) } }
                         ))
                         .toggleStyle(.checkbox)
+                        .fixedSize()
+                    }
+                    Spacer(minLength: 8)
+                    Text("\(text.count)/\(NotesStore.maxNoteLength)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(text.count > NotesStore.maxNoteLength ? .red : .secondary)
+                }
+                Divider()
+                // Actions row: destructive action isolated on the left, confirm/cancel on the right.
+                HStack {
+                    if let noteID {
+                        Button(role: .destructive) {
+                            Task { await model.deleteNote(id: noteID); onClose() }
+                        } label: {
+                            Label("Borrar", systemImage: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.red)
+                        .fixedSize()
                     }
                     Spacer()
-                    if let noteID {
-                        Button("Borrar", role: .destructive) {
-                            Task { await model.deleteNote(id: noteID); onClose() }
-                        }
-                    }
-                    Button("Cancelar", action: onClose).keyboardShortcut(.cancelAction)
-                    Button("Guardar", action: save).keyboardShortcut(.defaultAction)
+                    Button("Cancelar", action: onClose)
+                        .keyboardShortcut(.cancelAction)
+                        .fixedSize()
+                    // Return belongs to the text (new lines / list items), so saving is ⌘↩.
+                    Button("Guardar", action: save)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .buttonStyle(.borderedProminent)
+                        .help("Guardar (⌘↩)")
+                        .fixedSize()
                 }
                 if let error = model.errorMessage {
                     Text(error).font(.caption).foregroundStyle(.red)
@@ -63,6 +84,11 @@ struct NoteEditorView: View {
         .frame(width: 380)
         .onAppear(perform: loadOnce)
     }
+
+    private static let editorFont: NSFont = {
+        let base = NSFont.systemFont(ofSize: 14)
+        return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 14) } ?? base
+    }()
 
     private func loadOnce() {
         guard !loaded else { return }
@@ -76,7 +102,7 @@ struct NoteEditorView: View {
     }
 
     private func save() {
-        let text = text
+        let text = ListFormatting.trimmingEmptyTrailingItems(text)
         let projectID = projectID
         Task {
             let ok: Bool

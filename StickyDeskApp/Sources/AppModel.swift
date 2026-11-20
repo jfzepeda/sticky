@@ -82,6 +82,10 @@ final class AppModel {
         await perform { try $0.setNoteCompleted(id: id, completed) }
     }
 
+    func deleteCompletedNotes() async -> Int {
+        await perform { $0.deleteCompletedNotes() } ?? 0
+    }
+
     func deleteNote(id: UUID) async {
         await perform { $0.deleteNote(id: id) }
     }
